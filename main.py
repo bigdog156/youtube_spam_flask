@@ -15,6 +15,8 @@ from flask import request, jsonify
 import keras.backend.tensorflow_backend as tb
 import joblib
 import sklearn
+from flask import render_template
+
 # from socket import gethostname
 import socket
 app = Flask(__name__)
@@ -89,17 +91,17 @@ def pridictLSTM():
       }
       return jsonify(data)
 
-# @app.route('/svm',methods = ['POST'])
-# def pridictModelSVM():
-#             tb._SYMBOLIC_SCOPE.value = True
-#             text = str(request.get_json('DATA'))
-#             x = predict(text, SVM_model,tfidf)
-#             if x is None:
-#                 x = "NULL"
-#             data = {
-#                 'Result': x
-#             }
-#             return jsonify(data)
+@app.route('/svm',methods = ['POST'])
+def pridictModelSVM():
+            tb._SYMBOLIC_SCOPE.value = True
+            text = str(request.get_json('DATA'))
+            x = predict(text, SVM_model,tfidf)
+            if x is None:
+                x = "NULL"
+            data = {
+                'Result': x
+            }
+            return jsonify(data)
 
 @app.route('/np',methods = ['POST'])
 def pridictModelNP():
@@ -114,9 +116,10 @@ def pridictModelNP():
             return jsonify(data)
 
 @app.route('/',methods = ['GET'])
-def home():
-    return "Home"
+def home(name = None):
+    return render_template('upload_file.html', name=name)
 
 if __name__ == '__main__':
-    
-    app.run(host='192.168.43.239', port = '1998',debug=True, threaded=False)
+      # host iphone = 172.20.10.2
+    # host='192.168.43.239',
+    app.run(host = '127.0.0.1', port = '1998',debug=True, threaded=False)
