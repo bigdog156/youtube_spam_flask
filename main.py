@@ -16,14 +16,23 @@ import keras.backend.tensorflow_backend as tb
 import joblib
 import sklearn
 from flask import render_template
+from sklearn.feature_extraction.text import TfidfVectorizer
+from keras.preprocessing.text import Tokenizer
 
-# from socket import gethostname
+
 import socket
 app = Flask(__name__)
-# ip = socket.gethostbyname(gethostname()[0])
-# ipf = socket.getfqdn()
-# print(ipf)
-# print(ip)
+
+def remove_htmltag(text):
+      cleanr = re.compile('<.*?>')
+      return re.sub(cleanr, ' ', text)
+
+def remove_punctuations(text):
+  return text.translate(str.maketrans('', '', punctuation))
+
+def remove_digits(text):
+  return text.translate(str.maketrans('', '', digits))
+
 def get_wordnet_pos(word):
     """Map POS tag to first character lemmatize() accepts"""
     tag = nltk.pos_tag([word])[0][1][0].upper()
@@ -33,6 +42,20 @@ def get_wordnet_pos(word):
                 "R": wordnet.ADV}
 
     return tag_dict.get(tag, wordnet.NOUN)
+
+def process_one(text):
+      hl=remove_htmltag(text)
+      hl=remove_punctuations(hl)
+      hl=remove_digits(hl)
+      pre_one = hl
+      
+      pre_two = hl.split()
+      
+      tokens = pre_two
+      lemmatizer = WordNetLemmatizer()
+      pre_three = [lemmatizer.lemmatize(w, get_wordnet_pos(w)) for w in tokens]
+      
+      return str(pre_one), str(pre_two), str(pre_three)
 
 def word_lenmatizer(text):
     cleanr = re.compile('<.*?>')
@@ -84,42 +107,56 @@ tfidf = joblib.load('/Users/lethachlam/Developer/Datamining-Project/model/tfidf.
 @app.route('/lstm',methods = ['POST'])
 def pridictLSTM():
       tb._SYMBOLIC_SCOPE.value = True
-      text = str(request.get_json('DATA'))
+      text = str(request.get_json('DATA')['DATA'])
       x = LSTM_predict(text, LSTM_model, LSTM_TOKEN)
+      one, two, three = process_one(text)
       data = {
-        'Result': x
+        'Result': x,
+        'one': one,
+        'two': two,
+        'three': three
       }
       return jsonify(data)
 
 @app.route('/svm',methods = ['POST'])
 def pridictModelSVM():
             tb._SYMBOLIC_SCOPE.value = True
-            text = str(request.get_json('DATA'))
+            text = str(request.get_json('DATA')['DATA'])
             x = predict(text, SVM_model,tfidf)
+            one, two, three = process_one(text)
             if x is None:
                 x = "NULL"
             data = {
-                'Result': x
+                'Result': x,
+                'one': one,
+                'two': two,
+                'three': three
             }
             return jsonify(data)
 
 @app.route('/np',methods = ['POST'])
 def pridictModelNP():
             tb._SYMBOLIC_SCOPE.value = True
-            text = str(request.get_json('DATA'))
+            text = str(request.get_json('DATA')['DATA'])
             x = predict(text, NB_model,tfidf)
+            one, two, three = process_one(text)
             if x is None:
                 x = "NULL"
             data = {
-                'Result': x
+                'Result': x,
+                'one': one,
+                'two': two,
+                'three': three
             }
             return jsonify(data)
+# Pre processing on data
+
 
 @app.route('/',methods = ['GET'])
 def home(name = None):
     return render_template('upload_file.html', name=name)
 
 if __name__ == '__main__':
-      # host iphone = 172.20.10.2
+    # host iphone = 172.20.10.2
     # host='192.168.43.239',
     app.run(host = '127.0.0.1', port = '1998',debug=True, threaded=False)
