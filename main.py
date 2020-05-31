@@ -1,5 +1,4 @@
 import nltk
-from nltk.corpus import wordnet
 from nltk.stem import WordNetLemmatizer
 import re
 import string
@@ -18,20 +17,75 @@ import sklearn
 from flask import render_template
 from sklearn.feature_extraction.text import TfidfVectorizer
 from keras.preprocessing.text import Tokenizer
-
+from nltk.corpus import wordnet,stopwords
+import glob
+import pandas as pd
+from sklearn.metrics import classification_report
 
 import socket
 app = Flask(__name__)
 
-def remove_htmltag(text):
-      cleanr = re.compile('<.*?>')
-      return re.sub(cleanr, ' ', text)
+def standardize_data(text):
+      # Replace email addresses with 'email'
+  re_email=re.compile('[\w\.-]+@[\w\.-]+(\.[\w]+)+')
+  text=re.sub(re_email,'email',text)
 
-def remove_punctuations(text):
-  return text.translate(str.maketrans('', '', punctuation))
+  # Replace URLs with 'webaddress'
+  re_url=re.compile('(http|ftp|https)://([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])?')
+  text=re.sub(re_url,'webaddress',text)
 
-def remove_digits(text):
-  return text.translate(str.maketrans('', '', digits))
+  # Replace money symbols with 'moneysymb'
+  re_moneysb=re.compile('\$')
+  text=re.sub(re_moneysb,'moneysb',text)
+
+  # Remove ufeff 
+  re_moneysb=re.compile('\ufeff|\\ufeff')
+  text=re.sub(re_moneysb,' ',text)
+
+  # Replace 10 digit phone numbers (formats include paranthesis, spaces, no spaces, dashes) with 'phonenumber'
+  re_phonenb=re.compile('(\d{3}[-\.\s]??\d{3}[-\.\s]??\d{4}|\(\d{3}\)\s*\d{3}[-\.\s]??\d{4}|\d{3}[-\.\s]??\d{4})')
+  text=re.sub(re_phonenb,'phonenb',text)
+
+  # Replace numbers with 'numbr'
+  re_number=re.compile('\d+(\.\d+)?')
+  text=re.sub(re_number,' numbr ',text)
+
+  # Remove puntuation
+  text=text.translate(str.maketrans('', '', punctuation))
+
+  # Replace whitespace between terms with a single space
+  re_space=re.compile('\s+')
+  text=re.sub(re_space,' ',text)
+
+  # Remove leading and trailing whitespace
+  re_space=re.compile('^\s+|\s+?$')
+  text=re.sub(re_space,' ',text)
+
+  return text
+
+def remove_stopwords(text):
+  stop_words = set(stopwords.words('english'))
+  token=[term for term in text.split() if term not in stop_words]
+  return token
+
+def word_lenmatizer(token):
+    # Init Lemmatizer
+    lemmatizer = WordNetLemmatizer()
+    hl_lemmatized = []
+    lemm = [lemmatizer.lemmatize(w, get_wordnet_pos(w)) for w in token]
+    hl_lemmatized.append(lemm)
+    return hl_lemmatized
+
+def vectorize_lstm(w_lenmatizer,tokenizer):
+  sequences = tokenizer.texts_to_sequences(w_lenmatizer)
+  X = pad_sequences(sequences, maxlen=110)
+  return X
+
+
+def vectorize_clasifer(w_lenmatizer, tfidf_vector):
+  w_lenmatizer = [" ".join(x) for x in w_lenmatizer]
+  return tfidf_vector.transform(w_lenmatizer)
+
 
 def get_wordnet_pos(word):
     """Map POS tag to first character lemmatize() accepts"""
@@ -43,60 +97,83 @@ def get_wordnet_pos(word):
 
     return tag_dict.get(tag, wordnet.NOUN)
 
-def process_one(text):
-      hl=remove_htmltag(text)
-      hl=remove_punctuations(hl)
-      hl=remove_digits(hl)
-      pre_one = hl
-      
-      pre_two = hl.split()
-      
-      tokens = pre_two
-      lemmatizer = WordNetLemmatizer()
-      pre_three = [lemmatizer.lemmatize(w, get_wordnet_pos(w)) for w in tokens]
-      
-      return str(pre_one), str(pre_two), str(pre_three)
+def load_data(path):
+  all_files = glob.glob(path + "/*.csv")
+  li = []
+  for filename in all_files:
+      data_frame = pd.read_csv(filename, index_col=None, header=0, encoding='utf-8')
+      li.append(data_frame)
 
-def word_lenmatizer(text):
-    cleanr = re.compile('<.*?>')
-    text=re.sub(cleanr, ' ', text)
-    clean = text.translate(str.maketrans('', '', punctuation))
-    clean = clean.translate(str.maketrans('', '', digits))
-    text_tokenizer=clean.split()
-    # Init Lemmatizer
-    lemmatizer = WordNetLemmatizer()
-    hl_lemmatized = []
-    lemm = [lemmatizer.lemmatize(w, get_wordnet_pos(w)) for w in text_tokenizer]
-    hl_lemmatized.append(lemm)
-    return hl_lemmatized
+  df = pd.concat(li, axis=0, ignore_index=True)
+  return df
+
+def pre_processing(text):
+      standardize = standardize_data(text)
+      
+      tokens = remove_stopwords(standardize)
+
+      w_lenmatizer=word_lenmatizer(tokens)
+      
+      return str(standardize), str(tokens), w_lenmatizer
+
+
 
 def LSTM_predict(text,model,tokenizer):
-  w_lenmatizer=word_lenmatizer(text)
-  max_token = 14
+  text = standardize_data(text)
+  token =  remove_stopwords(text)
+  w_lenmatizer=word_lenmatizer(token)
+  max_token = 110
   sequences = tokenizer.texts_to_sequences(w_lenmatizer)
   X = pad_sequences(sequences, maxlen=max_token)
   if np.around(model.predict(X)[0])==1:
-    print(text)
     print("=============> SPAM\n")
     return 0
   else:
-    print(text)
     print("=============> HAM\n")
     return 1
   
 
 def predict(text,model,tfidf_vector):
-  w_lenmatizer=word_lenmatizer(text)
+  print(text)
+  text=standardize_data(text)
+  token=remove_stopwords(text)
+  w_lenmatizer=word_lenmatizer(token)
   w_lenmatizer = [" ".join(x) for x in w_lenmatizer]
   X_Tfidf = tfidf_vector.transform(w_lenmatizer)
   if model.predict(X_Tfidf)[0]==1:
-    print(text)
     print("=============> SPAM\n")
     return 0
   else:
-    print(text)
     print("=============> HAM\n")
     return 1
+
+def multi_predict(path,model,tokenizer,choice):
+  df=load_data(path)
+  hl_tokens = []
+  for hl in df['CONTENT']:
+      hl=standardize_data(hl)
+      hl=remove_stopwords(hl)
+      hl_tokens.append(hl)
+  # Init Lemmatizer
+  lemmatizer = WordNetLemmatizer()
+  hl_lemmatized = []
+  for tokens in hl_tokens:
+      lemm = [lemmatizer.lemmatize(w, get_wordnet_pos(w)) for w in tokens]
+      hl_lemmatized.append(lemm)
+
+  if choice==0:
+      sequences = tokenizer.texts_to_sequences(hl_lemmatized)
+      X = pad_sequences(sequences, maxlen=110)
+      Y = df['CLASS'].values
+      Y = np.vstack(Y)
+      pred=np.around(model.predict(X))
+      return classification_report(Y,pred)
+  else:
+      X = [" ".join(x) for x in hl_lemmatized]
+      Test_X_Tfidf = tokenizer.transform(X)
+      Y = df['CLASS'].values
+      pred=model.predict(Test_X_Tfidf)
+      return classification_report(Y,pred)
 
 LSTM_model = joblib.load('/Users/lethachlam/Developer/Datamining-Project/model/LSTM_model.pkl')
 LSTM_TOKEN = joblib.load('/Users/lethachlam/Developer/Datamining-Project/model/tokenizer_LSTM.pkl')
@@ -106,56 +183,94 @@ tfidf = joblib.load('/Users/lethachlam/Developer/Datamining-Project/model/tfidf.
 
 @app.route('/lstm',methods = ['POST'])
 def pridictLSTM():
+
       tb._SYMBOLIC_SCOPE.value = True
+
       text = str(request.get_json('DATA')['DATA'])
+
       x = LSTM_predict(text, LSTM_model, LSTM_TOKEN)
-      one, two, three = process_one(text)
+
+      one, two, three = pre_processing(text)
+
+      convert_vector = vectorize_lstm(text, LSTM_TOKEN)[0]
+
+      string_vector = np.array_str(convert_vector)
+
       data = {
         'Result': x,
-        'one': one,
-        'two': two,
-        'three': three
+        'standardize': one,
+        'tokens': two,
+        'lenmatizer': str(three),
+        'vector': string_vector
       }
+
       return jsonify(data)
 
 @app.route('/svm',methods = ['POST'])
 def pridictModelSVM():
             tb._SYMBOLIC_SCOPE.value = True
+
             text = str(request.get_json('DATA')['DATA'])
+
             x = predict(text, SVM_model,tfidf)
-            one, two, three = process_one(text)
+
+            one, two, three = pre_processing(text)
+            
+            convert_vector = vectorize_clasifer(three,tfidf)
+
+            string_vector = str(convert_vector)
+
             if x is None:
                 x = "NULL"
+            
             data = {
-                'Result': x,
-                'one': one,
-                'two': two,
-                'three': three
+              'Result': x,
+              'standardize': one,
+              'tokens': two,
+              'lenmatizer': str(three),
+              'vector': string_vector
             }
+
             return jsonify(data)
 
 @app.route('/np',methods = ['POST'])
 def pridictModelNP():
             tb._SYMBOLIC_SCOPE.value = True
+
             text = str(request.get_json('DATA')['DATA'])
+
             x = predict(text, NB_model,tfidf)
-            one, two, three = process_one(text)
+
+            one, two, three = pre_processing(text)
+
+            convert_vector = vectorize_clasifer(three,tfidf)
+
+            string_vector = str(convert_vector)
+
             if x is None:
                 x = "NULL"
             data = {
-                'Result': x,
-                'one': one,
-                'two': two,
-                'three': three
+              'Result': x,
+              'standardize': one,
+              'tokens': two,
+              'lenmatizer': str(three),
+              'vector': string_vector
             }
+
             return jsonify(data)
-# Pre processing on data
 
 
 @app.route('/',methods = ['GET'])
 def home(name = None):
     return render_template('upload_file.html', name=name)
 
+@app.route('/multipredict',methods = ['GET'])
+def multipridict():
+    x = multi_predict('/Users/lethachlam/Developer/Datamining-Project/data',NB_model,tfidf,1)
+    data = {
+      "Multi": x
+    }
+    return jsonify(data)
 if __name__ == '__main__':
     # host iphone = 172.20.10.2
     # host='192.168.43.239',
