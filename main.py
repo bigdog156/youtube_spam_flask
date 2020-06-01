@@ -167,13 +167,30 @@ def multi_predict(path,model,tokenizer,choice):
       Y = df['CLASS'].values
       Y = np.vstack(Y)
       pred=np.around(model.predict(X))
-      return classification_report(Y,pred)
+      results = []
+      for text in df['CONTENT']:
+            # 0 is SPAM, 1 NO SPAM
+            result = []
+            res = LSTM_predict(text, model, tokenizer)
+            result.append(text)
+            result.append(res)
+            results.append(result)
+      return classification_report(Y,pred), results
   else:
       X = [" ".join(x) for x in hl_lemmatized]
       Test_X_Tfidf = tokenizer.transform(X)
       Y = df['CLASS'].values
       pred=model.predict(Test_X_Tfidf)
-      return classification_report(Y,pred)
+      results = []
+      
+      for text in df['CONTENT']:
+            # 0 is SPAM, 1 NO SPAM
+            result = []
+            res = predict(text, model, tokenizer)
+            result.append(text)
+            result.append(res)
+            results.append(result)
+      return classification_report(Y,pred), results
 
 LSTM_model = joblib.load('/Users/lethachlam/Developer/Datamining-Project/model/LSTM_model.pkl')
 LSTM_TOKEN = joblib.load('/Users/lethachlam/Developer/Datamining-Project/model/tokenizer_LSTM.pkl')
@@ -264,9 +281,44 @@ def pridictModelNP():
 def home(name = None):
     return render_template('upload_file.html', name=name)
 
+@app.route('/multipredict',methods = ['POST'])
+def multipredictAll():
+    tb._SYMBOLIC_SCOPE.value = True
+    method = request.get_json()['method']
+    id = request.get_json()['id']
+    print(method)
+    print(id)
+    model = None
+    token = None
+    path = ""
+    choice = 1
+    if method == "LSTM":
+          model = LSTM_model
+          token = LSTM_TOKEN
+          choice = 0
+    elif method == "NB":
+          model = NB_model
+          token = tfidf
+    elif method == "SVM":
+          model = SVM_model
+          token = tfidf
+
+    if id == 0:
+          path = "/Users/lethachlam/Developer/Datamining-Project/data/list1"
+    else:
+          path = "/Users/lethachlam/Developer/Datamining-Project/data/list2"
+    results = []
+    x, results = multi_predict(path,model,token,choice)
+
+    data = {
+      "Multi": x,
+      "results": results
+    }
+    return jsonify(data)
+
 @app.route('/multipredict',methods = ['GET'])
 def multipridict():
-    x = multi_predict('/Users/lethachlam/Developer/Datamining-Project/data',NB_model,tfidf,1)
+    x = multi_predict('/Users/lethachlam/Developer/Datamining-Project/data',LSTM_model,LSTM_TOKEN,0)
     data = {
       "Multi": x
     }
