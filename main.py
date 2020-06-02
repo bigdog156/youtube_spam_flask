@@ -78,7 +78,7 @@ def word_lenmatizer(token):
 
 def vectorize_lstm(w_lenmatizer,tokenizer):
   sequences = tokenizer.texts_to_sequences(w_lenmatizer)
-  X = pad_sequences(sequences, maxlen=110)
+  X = pad_sequences(sequences, maxlen=103)
   return X
 
 
@@ -108,6 +108,7 @@ def load_data(path):
   return df
 
 def pre_processing(text):
+      text = text.lower()
       standardize = standardize_data(text)
       
       tokens = remove_stopwords(standardize)
@@ -122,7 +123,7 @@ def LSTM_predict(text,model,tokenizer):
   text = standardize_data(text)
   token =  remove_stopwords(text)
   w_lenmatizer=word_lenmatizer(token)
-  max_token = 110
+  max_token = 103
   sequences = tokenizer.texts_to_sequences(w_lenmatizer)
   X = pad_sequences(sequences, maxlen=max_token)
   if np.around(model.predict(X)[0])==1:
@@ -163,7 +164,7 @@ def multi_predict(path,model,tokenizer,choice):
 
   if choice==0:
       sequences = tokenizer.texts_to_sequences(hl_lemmatized)
-      X = pad_sequences(sequences, maxlen=110)
+      X = pad_sequences(sequences, maxlen=103)
       Y = df['CLASS'].values
       Y = np.vstack(Y)
       pred=np.around(model.predict(X))
@@ -209,7 +210,7 @@ def pridictLSTM():
 
       one, two, three = pre_processing(text)
 
-      convert_vector = vectorize_lstm(text, LSTM_TOKEN)[0]
+      convert_vector = vectorize_lstm(three, LSTM_TOKEN)
 
       string_vector = np.array_str(convert_vector)
 
@@ -326,4 +327,5 @@ def multipridict():
 if __name__ == '__main__':
     # host iphone = 172.20.10.2
     # host='192.168.43.239',
+    #UIT 10.45.139.57
     app.run(host = '127.0.0.1', port = '1998',debug=True, threaded=False)
